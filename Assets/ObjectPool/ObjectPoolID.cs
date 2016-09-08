@@ -1,8 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 
-namespace USS.Pooling
-{
     public class ObjectPoolID : MonoBehaviour
     {
         public Transform MyParentTransform;
@@ -22,4 +20,3 @@ namespace USS.Pooling
             return isFree;
         }
     }
-}
