@@ -1,9 +1,10 @@
-﻿using UnityEngine;
+﻿#pragma warning disable 0414, 0219, 649, 169, 618, 1570
+using UnityEngine;
+using System.Collections.Generic;
 using System;
 using System.Collections;
-using System.Collections.Generic;
+using AdvancedInspector;
 
-//The only methods for accessing pools from outside this script
 public static class ObjectPoolExtensions
 {
 	public static GameObject InstantiateFromPool(this GameObject prefab, Vector3 position, Quaternion rotation)
@@ -11,15 +12,46 @@ public static class ObjectPoolExtensions
 		return ObjectPool.Instantiate(prefab, position, rotation);
 	}
 
+	public static GameObject InstantiateFromPool(this GameObject prefab)
+	{
+		return ObjectPool.Instantiate(prefab, Vector3.zero, Quaternion.identity);
+	}
+
+	public static T InstantiateFromPool<T>(this GameObject prefab)
+		where T : class
+	{
+		T tComp = ObjectPool.Instantiate(prefab).GetComponent<T>();
+		if (tComp == null) Debug.LogError("Object of type " + typeof(T).Name + " is not contained in prefab");
+		return tComp;
+	}
+
 	public static T InstantiateFromPool<T>(this GameObject prefab, Vector3 position, Quaternion rotation)
 		where T : class
 	{
-		return ObjectPool.Instantiate(prefab, position, rotation) as T;
+		T tComp = ObjectPool.Instantiate(prefab, position, rotation).GetComponent<T>();
+		if (tComp == null) Debug.LogError("Object of type " + typeof(T).Name + " is not contained in prefab");
+		return tComp;
+	}
+
+	public static GameObject InstantiateFromPool(this GameObject prefab, Vector3 position, Quaternion rotation, GameObject activeParent, GameObject inactiveParent)
+	{
+		return ObjectPool.Instantiate(prefab, position, rotation, activeParent, inactiveParent);
+	}
+
+	public static T InstantiateFromPool<T>(this GameObject prefab, Vector3 position, Quaternion rotation, GameObject activeParent, GameObject inactiveParent)
+		where T : class
+	{
+		return ObjectPool.Instantiate(prefab, position, rotation, activeParent, inactiveParent) as T;
 	}
 
 	public static void Release(this GameObject objthis)
 	{
 		ObjectPool.Release(objthis);
+	}
+
+	public static void Release<T>(this T objThis) where T: Component
+	{
+		ObjectPool.Release(objThis.gameObject);
 	}
 
 	public static void ReleaseDelayed(this GameObject objthis, float delayTime)
@@ -30,10 +62,10 @@ public static class ObjectPoolExtensions
 
 public class ObjectPool : MonoBehaviour
 {
+	public GameObject ActiveParentDefault, InactiveParentDefault;
 	private static ObjectPool _instance;
 	public static ObjectPool instance
 	{
-		//Singleton management
 		get
 		{
 			if (_instance == null)
@@ -43,41 +75,66 @@ public class ObjectPool : MonoBehaviour
 				{
 					GameObject go = new GameObject("ObjectPool");
 					_instance = go.AddComponent<ObjectPool>();
-					
+
 				}
 			}
 			return _instance;
 		}
 	}
 
-	//Custom pools you can fill via Inspector on a per-prefab basis, adds more features to the pool
 	public List<Pool> customPools = new List<Pool>();
 
 	public List<Pool> runtimePools = new List<Pool>();//Read only, just displays pools created on runtime without prior setup."
 
-	//Ties pools to related object
 	Dictionary<GameObject, Pool> pool = new Dictionary<GameObject, Pool>();
+	
+	public static GameObject Instantiate(GameObject prefab, Vector3 position, Quaternion rotation, GameObject activeParent = null, GameObject inactiveParent = null)
 
-	// Create from pool
-	public static GameObject Instantiate(GameObject prefab, Vector3 position, Quaternion rotation)
 	{
-		return instance._Instantiate(prefab, position, rotation);
+		return instance._Instantiate(prefab, position, rotation, activeParent, inactiveParent);
 	}
 
-	GameObject _Instantiate(GameObject prefab, Vector3 position, Quaternion rotation)
+	GameObject _Instantiate(GameObject prefab, Vector3 position, Quaternion rotation, GameObject activeParent = null, GameObject inactiveParent = null)
 	{
-		//if our pools already exist for this specific prefab, use it
 		if (pool.ContainsKey(prefab))
 		{
 			Pool current = pool[prefab];
+
+			//GameObject keywordActiveGameObject = new GameObject(current.Keyword);
+			//keywordActiveGameObject.transform.SetParent(activeParent.transform);
+			//current.activeParentGO = keywordActiveGameObject;
+			//
+			//GameObject keywordInactiveGameObject = new GameObject(current.Keyword);
+			//keywordInactiveGameObject.transform.SetParent(inactiveParent.transform);
+			//current.inactiveParentGO = keywordInactiveGameObject;
+
+			//if (current.activeParentGO == null)
+
+
 			return current.Request(position, rotation);
 		}
-		else //Create a new pool for this prefab, then use it
+		else // Create new runtime pool
 		{
 			Pool newpool = new Pool();
+
+			
+
+			//if (activeParent) newpool.activeParentGO = activeParent;
+			//else newpool.activeParentGO = ActiveParentDefault;
+			//if (inactiveParent) newpool.inactiveParentGO = inactiveParent;
+			//else newpool.inactiveParentGO = InactiveParentDefault;
+
+			GameObject keywordActiveGameObject = new GameObject(prefab.name);
+			keywordActiveGameObject.transform.SetParent( (activeParent != null) ? activeParent.transform : ActiveParentDefault.transform  );
+			newpool.activeParentGO = keywordActiveGameObject;
+
+			GameObject keywordInactiveGameObject = new GameObject(prefab.name);
+			keywordInactiveGameObject.transform.SetParent((inactiveParent != null) ? inactiveParent.transform : InactiveParentDefault.transform);
+			newpool.inactiveParentGO = keywordInactiveGameObject;
+
 			runtimePools.Add(newpool);
 			pool.Add(prefab, newpool);
-			newpool.MaxObjectsWarning = 100;
+			newpool.MaxObjectsWarning = 1000;
 			newpool.prefab = prefab;
 			return newpool.Request(position, rotation);
 		}
@@ -90,12 +147,52 @@ public class ObjectPool : MonoBehaviour
 		{
 			if (customPools[i].prefab == null)
 			{
-				Debug.LogError("Exists custom object pool without object, clean it up.");
+				Debug.LogError("Custom object pool exists without prefab assigned to it.");
 				continue;
 			}
+			//Set keyword if blank
+			if (customPools[i].Keyword.Length == 0) customPools[i].Keyword = customPools[i].prefab.name;
+			//Set custom pool's parents to the default if they don't exist
+			bool addSortObject = false;
+			if (customPools[i].activeParentGO == null)
+			{
+				customPools[i].activeParentGO = ActiveParentDefault;
+				addSortObject = true;
+				GameObject keywordActiveGameObject = new GameObject(customPools[i].Keyword);
+				keywordActiveGameObject.transform.SetParent(customPools[i].activeParentGO.transform);
+				customPools[i].activeParentGO = keywordActiveGameObject;
+			}
+			if (customPools[i].inactiveParentGO == null)
+			{
+				customPools[i].inactiveParentGO = InactiveParentDefault;
+				addSortObject = true;
+				GameObject keywordInactiveGameObject = new GameObject(customPools[i].Keyword);
+				keywordInactiveGameObject.transform.SetParent(customPools[i].inactiveParentGO.transform);
+				customPools[i].inactiveParentGO = keywordInactiveGameObject;
+			}
+
+			//Change parents to the keyword-specific
+			//if (addSortObject)
+			//{
+			//	GameObject keywordActiveGameObject = new GameObject(customPools[i].Keyword);
+			//	keywordActiveGameObject.transform.SetParent(customPools[i].activeParentGO.transform);
+			//	customPools[i].activeParentGO = keywordActiveGameObject;
+			//
+			//	GameObject keywordInactiveGameObject = new GameObject(customPools[i].Keyword);
+			//	keywordInactiveGameObject.transform.SetParent(customPools[i].inactiveParentGO.transform);
+			//	customPools[i].inactiveParentGO = keywordInactiveGameObject;
+			//}
 
 			if (!pool.ContainsKey(customPools[i].prefab))
 			{
+				//var poolActiveParentObj = new GameObject(customPools[i].Keyword);
+				//poolActiveParentObj.transform.parent = customPools[i].activeParentGO.transform;
+				//customPools[i].activeParentGO.transform.parent = poolActiveParentObj.transform;
+				//
+				//var poolInactiveParentObj = new GameObject(customPools[i].Keyword);
+				//poolInactiveParentObj.transform.parent = customPools[i].inactiveParentGO.transform;
+				//customPools[i].inactiveParentGO.transform.parent = poolInactiveParentObj.transform;
+
 				pool.Add(customPools[i].prefab, customPools[i]);
 			}
 			else
@@ -107,14 +204,12 @@ public class ObjectPool : MonoBehaviour
 
 	void Start()
 	{
-		//Preload each pool with specified number of deactivated instances of prefab
 		for (int i = 0; i < customPools.Count; i++)
 		{
 			customPools[i].PreloadInstances();
 		}
 	}
 
-	// Release an active object back into the pool for reuse
 	public static void Release(GameObject obj)
 	{
 		instance._release(obj);
@@ -145,13 +240,17 @@ public class ObjectPool : MonoBehaviour
 		id.Pool.Release(id);
 	}
 
-	// Schedule pool release for the future
 	public static void DelayedRelease(GameObject obj, float delayTime)
 	{
 		instance._delayedRelease(obj, delayTime);
 	}
 
-	IEnumerator _delayedRelease(GameObject obj, float delayTime)
+	private void _delayedRelease(GameObject obj, float delayTime)
+	{
+		StartCoroutine(_delayedReleaseCoroutine(obj, delayTime));
+	}
+
+	IEnumerator _delayedReleaseCoroutine(GameObject obj, float delayTime)
 	{
 		yield return new WaitForSeconds(delayTime);
 		_release(obj);
@@ -166,35 +265,25 @@ public class ObjectPool : MonoBehaviour
 				return "Empty Pool";
 			return prefab.ToString();
 		}
-
 		public GameObject prefab;
-
-		//The parent object to attach spawned and activated instances to, null for no parent
 		public GameObject activeParentGO;
-		//Parent object for objects that are currently sitting in the pool awaiting use
 		public GameObject inactiveParentGO;
-
-		//Helpful name for keeping track of pool assignments
 		public string Keyword;
-		//Warn via debug log if the pool spawns more instances of a prefab than this number
-		public int MaxObjectsWarning = 10;
-		//How many prefabs to spawn on level load
+		public int MaxObjectsWarning = 10000;
 		public uint preloadCount = 0;
-		//Cull the despawned pool after no use for a period of time or not
 		public bool cullDespawned = false;
-		//If cullDespawned = true, this is the number of deactive spawns to cull the pool down to
 		public uint cullAboveCount = 100;
-		//How long to wait before culling inactive objects
 		public float cullWaitDelay = 60;
-		//How many inactive objects to cull per frame max
 		public int cullMaxPerPass = 1000;
 
-		//Internal use only, determines whether culling is actively occurring now or not
+		[ReadOnly]
 		public bool cullingActive = false;
 
-		//Internal use only, manages counts of spawned items in the pool active/inactive
+		[ReadOnly]
 		public int CountFree;
+		[ReadOnly]
 		public int CountInUse;
+		[ReadOnly]
 		public int CountTotal => CountFree + CountInUse;
 		List<ObjectPoolID> free = new List<ObjectPoolID>();
 		List<ObjectPoolID> inUse = new List<ObjectPoolID>();
@@ -203,7 +292,7 @@ public class ObjectPool : MonoBehaviour
 
 		public void PreloadInstances()
 		{
-			//Fires on level load, prespawns preloadCount number of instances into pool
+			if (Keyword.Length == 0) Keyword = prefab.gameObject.name;
 			if (preloadCount <= 0)
 			{
 				return;
@@ -213,13 +302,12 @@ public class ObjectPool : MonoBehaviour
 
 			for (int i = 0; i < preloadCount; i++)
 			{
-				//Create new prefab instantiation and add to free pool
 				temp = (GameObject)GameObject.Instantiate(prefab, Vector3.zero, Quaternion.identity);
+				temp.name += CountTotal;
 				obj = temp.AddComponent<ObjectPoolID>();
 				free.Add(obj);
-				CountFree= free.Count;
+				CountFree = free.Count;
 
-				//Configure parent object references
 				obj.Pool = this;
 				if (activeParentGO)
 					obj.MyParentTransform = activeParentGO.transform;
@@ -229,7 +317,7 @@ public class ObjectPool : MonoBehaviour
 				obj.transform.SetParent(obj.MyParentTransform);
 				if (CountTotal > MaxObjectsWarning)
 				{
-					Debug.LogError("ObjectPool: More than max objects spawned. --- " + prefab.name + " Max obj set to: " + MaxObjectsWarning + " and the pool already has: " + CountTotal);
+					//Debug.LogError("ObjectPool: More than max objects spawned. --- " + prefab.name + " Max obj set to: " + MaxObjectsWarning + " and the pool already has: " + CountTotal);
 				}
 
 				if (!inactiveParentGO)
@@ -242,13 +330,13 @@ public class ObjectPool : MonoBehaviour
 			}
 		}
 
-		//Called internally when a script wants an object from the pool, works as above
 		public GameObject Request(Vector3 position, Quaternion rotation)
 		{
 			ObjectPoolID obj;
 			if (CountFree <= 0)
 			{
 				temp = (GameObject)GameObject.Instantiate(prefab, position, rotation);
+				temp.name += CountTotal;
 				obj = temp.AddComponent<ObjectPoolID>();
 				inUse.Add(obj);
 				CountInUse = inUse.Count;
@@ -262,41 +350,38 @@ public class ObjectPool : MonoBehaviour
 				obj.transform.SetParent(obj.MyParentTransform);
 				if (CountTotal > MaxObjectsWarning)
 				{
-					Debug.LogError("ObjectPool: More than max objects spawned. --- " + prefab.name + " Max obj set to: " + MaxObjectsWarning + " and the pool already has: " + CountTotal);
+					//Debug.LogError("ObjectPool: More than max objects spawned. --- " + prefab.name + " Max obj set to: " + MaxObjectsWarning + " and the pool already has: " + CountTotal);
 				}
 				obj.SetFree(false);
 			}
 			else
 			{
-				obj = free[0];
+				obj = free[free.Count - 1];
 
-				free.RemoveAt(0);
+				free.RemoveAt(free.Count-1);
+				
 				inUse.Add(obj);
 				obj.transform.SetParent(obj.MyParentTransform);
 
 				obj.gameObject.transform.position = position;
 				obj.gameObject.transform.rotation = rotation;
-				obj.gameObject.SetActive(true);
+				//obj.gameObject.SetActive(true);
 
 				CountFree = free.Count;
 				CountInUse = inUse.Count;
 				temp = obj.gameObject;
+				temp.SetActive(true);
 				obj.SetFree(false);
 			}
 
-			//This calls the spawned object's Interface initialization method if it has one
-			var init = temp.GetComponent<IPoolInit>();
-			if (init != null) init.InitFromPool();
-			
+			temp.GetComponent<IPoolInit>()?.InitFromPool();
+
 			return temp;
 		}
 
-		//Opposite of request, frees object into pool after it's done being used
 		public void Release(ObjectPoolID obj)
 		{
-			//This calls the spawned object's Interface deinit method if it has one
-			var init = temp.GetComponent<IPoolInit>();
-			if (init != null) init.DeactivateBeforeRelease();
+			obj.GetComponent<IPoolRelease>()?.DeactivateBeforeRelease();
 
 			inUse.Remove(obj);
 			CountInUse = inUse.Count;
@@ -309,9 +394,9 @@ public class ObjectPool : MonoBehaviour
 			else
 				obj.transform.SetParent(inactiveParentGO.transform);
 
-			obj.gameObject.SetActive(false);
 			obj.SetFree(true);
-			
+			obj.gameObject.SetActive(false);
+
 		}
 
 		/// <summary>
@@ -344,13 +429,13 @@ public class ObjectPool : MonoBehaviour
 						this.CountFree = free.Count;
 
 					}
-					
+
 				}
 
 				// Check again later
 				yield return new WaitForSeconds(this.cullWaitDelay);
 			}
-			
+
 			// Reset the singleton so the feature can be used again if needed.
 			this.cullingActive = false;
 			yield return null;
