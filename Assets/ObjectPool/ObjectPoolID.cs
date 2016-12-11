@@ -1,27 +1,51 @@
-﻿#pragma warning disable 0414, 0219, 649, 169, 618, 1570
-using UnityEngine;
-using System.Collections;
+﻿// /** 
+//  * ObjectPoolId.cs
+//  * Dylan Bailey
+//  * 20161209
+// */
 
-public class ObjectPoolID : MonoBehaviour
+namespace Zen.ObjectPool
 {
-	public Transform MyParentTransform;
-	public ObjectPool.Pool Pool { get; set; }
-	public bool Free => isFree;
-	bool isFree { get; set; }
-	public int thisID => GetInstanceID();
+    #region Dependencies
 
-	public int prefabID
-	{
-		get { if (MyParentTransform == null) return 0; return MyParentTransform.gameObject.GetInstanceID(); }
-	}
+    using UnityEngine;
 
-	public void SetFree(bool state)
-	{
-		isFree = state;
-	}
+    #endregion
+    
 
-	public bool GetFree()
-	{
-		return isFree;
-	}
+    public class ObjectPoolId : MonoBehaviour
+    {
+        public Transform MyParentTransform;
+        public ObjectPool.Pool Pool { get; set; }
+
+	    public bool Free
+	    {
+		    get { return IsFree; }
+			set { IsFree = value; }
+	    }
+        private bool IsFree { get; set; }
+
+	    public int ThisId
+	    {
+		    get { return GetInstanceID(); }
+	    } 
+
+        public int PrefabId
+        {
+            get
+            {
+                return MyParentTransform == null ? 0 : MyParentTransform.gameObject.GetInstanceID();
+            }
+        }
+
+        public void SetFree(bool state)
+        {
+            IsFree = state;
+        }
+
+        public bool GetFree()
+        {
+            return IsFree;
+        }
+    }
 }
