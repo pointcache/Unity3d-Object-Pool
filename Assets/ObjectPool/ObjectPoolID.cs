@@ -1,22 +1,51 @@
-﻿using UnityEngine;
-using System.Collections.Generic;
+﻿// /** 
+//  * ObjectPoolId.cs
+//  * Dylan Bailey
+//  * 20161209
+// */
 
-    public class ObjectPoolID : MonoBehaviour
+namespace Zen.ObjectPool
+{
+    #region Dependencies
+
+    using UnityEngine;
+
+    #endregion
+    
+
+    public class ObjectPoolId : MonoBehaviour
     {
         public Transform MyParentTransform;
-        public ObjectPool.Pool pool { get; set; }
-        public bool Free { get { return isFree; } }
-        bool isFree { get; set; }
-        public int thisID { get { return GetInstanceID(); } }
-        public int prefabID { get { if (MyParentTransform == null) return 0; return MyParentTransform.gameObject.GetInstanceID(); } }
+        public ObjectPool.Pool Pool { get; set; }
+
+	    public bool Free
+	    {
+		    get { return IsFree; }
+			set { IsFree = value; }
+	    }
+        private bool IsFree { get; set; }
+
+	    public int ThisId
+	    {
+		    get { return GetInstanceID(); }
+	    } 
+
+        public int PrefabId
+        {
+            get
+            {
+                return MyParentTransform == null ? 0 : MyParentTransform.gameObject.GetInstanceID();
+            }
+        }
 
         public void SetFree(bool state)
         {
-            isFree = state;
+            IsFree = state;
         }
 
         public bool GetFree()
         {
-            return isFree;
+            return IsFree;
         }
     }
+}
